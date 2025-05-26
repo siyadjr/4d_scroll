@@ -1,6 +1,6 @@
 class Post {
   final int id;
-  final List<dynamic> category;
+
   final String slug;
   final int? parentVideoId;
   final int childVideoCount;
@@ -11,7 +11,7 @@ class Post {
 
   Post({
     required this.id,
-    required this.category,
+
     required this.slug,
     this.parentVideoId,
     required this.childVideoCount,
@@ -24,7 +24,7 @@ class Post {
   factory Post.fromJson(Map<String, dynamic> json) {
     return Post(
       id: json['id'],
-      category: json['category'] ?? [],
+     
       slug: json['slug'],
       parentVideoId: json['parent_video_id'],
       childVideoCount: json['child_video_count'],

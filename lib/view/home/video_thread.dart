@@ -32,6 +32,7 @@ class _VideoThreadState extends State<VideoThread> {
   bool hasError = false;
   late PageController _pageController;
   int _currentPage = 0;
+  final _debounce = Debouncer(milliseconds: 100);
 
   @override
   void initState() {
@@ -40,10 +41,15 @@ class _VideoThreadState extends State<VideoThread> {
     _pageController.addListener(() {
       final newPage = _pageController.page?.round() ?? 0;
       if (newPage != _currentPage && mounted) {
-        setState(() {
-          _currentPage = newPage;
+        _debounce(() {
+          setState(() {
+            _currentPage = newPage;
+          });
+          _updateScrollIndicators();
+          if (newPage == 0 && widget.onBackScroll != null) {
+            // widget.onBackScroll!();
+          }
         });
-        _handlePageChange(newPage);
       }
     });
     _fetchReplies();
@@ -59,59 +65,67 @@ class _VideoThreadState extends State<VideoThread> {
     }
   }
 
-  void _updateScrollIndicators() {
-    final provider = Provider.of<ScrollIndicatorController>(
-      context,
-      listen: false,
-    );
-    provider.setRightCount(replies.length);
-    replies.isNotEmpty
-        ? provider.rightToggleTrue()
-        : provider.rightToggleFalse();
+void _updateScrollIndicators() {
+  final provider = Provider.of<ScrollIndicatorController>(
+    context,
+    listen: false,
+  );
+
+  // Determine current Post
+  Post currentPost = (_currentPage == 0) ? widget.post : replies[_currentPage - 1];
+
+  // Left indicator: Enable if currentPost has a parent (not top-level)
+  final hasParent = currentPost.parentPost != null;
+
+  // Right indicator: Enable if currentPost has children (childVideoCount > 0)
+  final hasChildren = (currentPost.childVideoCount ?? 0) > 0;
+
+  // Number of children for the indicator count
+  final childrenCount = currentPost.childVideoCount ?? 0;
+
+  // Determine which indicators to show based on scroll direction
+  bool left = false, right = false, top = false, bottom = false;
+  int leftCount = 0, rightCount = 0, topCount = 0, bottomCount = 0;
+
+  if (widget.scrollDirection == Axis.vertical) {
+    // Vertical scroll means scrolling top<->bottom
+    // So children scroll on horizontal axis (left/right)
+    left = hasParent;
+    leftCount = hasParent ? 1 : 0;
+    right = hasChildren;
+    rightCount = childrenCount;
+
+    // For root, preserve top/bottom indicators if needed
+    top = widget.isRoot ? provider.top : false;
+    bottom = widget.isRoot ? provider.bottom : false;
+    topCount = widget.isRoot ? provider.topCount : 0;
+    bottomCount = widget.isRoot ? provider.bottomCount : 0;
+  } else {
+    // Horizontal scroll means scrolling left<->right
+    // So children scroll on vertical axis (top/bottom)
+    top = hasChildren;
+    topCount = childrenCount;
+    bottom = false; // Usually no "bottom" in this design, but can be extended
+    left = hasParent;
+    leftCount = hasParent ? 1 : 0;
+    right = false;
+
+    bottomCount = 0;
+    rightCount = 0;
   }
 
-  bool get _shouldShowLeftIndicator {
-    final parent = widget.post.parentPost;
+  provider.updateIndicators(
+    left: left,
+    leftCount: leftCount,
+    right: right,
+    rightCount: rightCount,
+    top: top,
+    bottom: bottom,
+    topCount: topCount,
+    bottomCount: bottomCount,
+  );
+}
 
-    // Show left only if this is not a third-level (1.1.1) or shallower post
-    // i.e., if grandparent exists → this is 1.1.1.1 or deeper
-    return parent != null && parent.parentPost != null;
-  }
-
-  void _handlePageChange(int newPage) {
-    final provider = Provider.of<ScrollIndicatorController>(
-      context,
-      listen: false,
-    );
-
-    if (newPage == 0) {
-      _updateScrollIndicators();
-
-      if (widget.onBackScroll != null) {
-        widget.onBackScroll!();
-      }
-
-      // ✨ Hide left indicator if we're at 1.1.1 level (post has parent, but parent has no parent)
-      final isThirdLevel = _shouldShowLeftIndicator;
-      log(isThirdLevel.toString());
-
-      if (isThirdLevel) {
-        provider.leftToggleFalse();
-      } else {
-        provider.leftToggleTrue();
-      }
-    } else {
-      provider.leftToggleTrue();
-      provider.setLeftCount(newPage);
-      final isLastReply = newPage == replies.length;
-      if (isLastReply) {
-        provider.rightToggleFalse();
-      } else {
-        provider.setRightCount(replies.length - newPage);
-        provider.rightToggleTrue();
-      }
-    }
-  }
 
   Future<void> _fetchReplies() async {
     if (!mounted) return;
@@ -127,7 +141,6 @@ class _VideoThreadState extends State<VideoThread> {
             final reply = Post.fromJson(json);
             return Post(
               id: reply.id,
-              category: reply.category,
               slug: reply.slug,
               parentVideoId: reply.parentVideoId,
               childVideoCount: reply.childVideoCount,
@@ -145,26 +158,7 @@ class _VideoThreadState extends State<VideoThread> {
         isLoading = false;
       });
 
-      final provider = Provider.of<ScrollIndicatorController>(
-        context,
-        listen: false,
-      );
-
-      if (widget.isRoot) {
-        _updateScrollIndicators();
-      } else {
-        if (fetchedReplies.isEmpty) {
-          provider.rightToggleFalse();
-
-          // ✨ Special case: Only show left if this is deep enough (1.1.1.1 or more)
-          final isDeep =
-              widget.post.parentPost != null &&
-              widget.post.parentPost!.parentPost != null;
-          isDeep ? provider.leftToggleTrue() : provider.leftToggleFalse();
-        } else {
-          provider.rightToggleTrue();
-        }
-      }
+      _updateScrollIndicators();
     } catch (e, stack) {
       log("Error fetching replies", error: e, stackTrace: stack);
       if (mounted) {
@@ -278,6 +272,24 @@ class _VideoThreadState extends State<VideoThread> {
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+}
+
+class Debouncer {
+  final int milliseconds;
+  VoidCallback? action;
+  bool _isWaiting = false;
+
+  Debouncer({required this.milliseconds});
+
+  call(VoidCallback callback) {
+    if (_isWaiting) return;
+    _isWaiting = true;
+    action = callback;
+    Future.delayed(Duration(milliseconds: milliseconds), () {
+      _isWaiting = false;
+      action?.call();
+    });
   }
 }
 

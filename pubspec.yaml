@@ -40,6 +40,7 @@ dependencies:
   tiktoklikescroller: ^0.2.8
   http: ^1.4.0
   visibility_detector: ^0.4.0+2
+  async: ^2.12.0
 
 dev_dependencies:
   flutter_test:

@@ -86,6 +86,28 @@ class ScrollIndicatorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Batch update method to set all indicators and counts at once
+  void updateIndicators({
+    bool? left,
+    bool? right,
+    bool? top,
+    bool? bottom,
+    int? leftCount,
+    int? rightCount,
+    int? topCount,
+    int? bottomCount,
+  }) {
+    if (left != null) _left = left;
+    if (right != null) _right = right;
+    if (top != null) _top = top;
+    if (bottom != null) _bottom = bottom;
+    if (leftCount != null) _leftCount = leftCount;
+    if (rightCount != null) _rightCount = rightCount;
+    if (topCount != null) _topCount = topCount;
+    if (bottomCount != null) _bottomCount = bottomCount;
+    notifyListeners(); // Single notification for all changes
+  }
+
   // Reset everything
   void resetAll() {
     _left = _right = _top = _bottom = false;

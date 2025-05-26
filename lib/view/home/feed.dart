@@ -19,13 +19,12 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   void initState() {
     super.initState();
-    // listen page changes
     _pageController.addListener(_onPageChange);
-    // fetch feed once
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<FeedProvider>(context, listen: false)
-          .getFeedDatas()
-          .then((_) => _updateMainIndicators());
+      Provider.of<FeedProvider>(
+        context,
+        listen: false,
+      ).getFeedDatas().then((_) => _updateMainIndicators());
     });
   }
 
@@ -42,20 +41,19 @@ class _FeedScreenState extends State<FeedScreen> {
     final main = feed.posts.where((p) => p.parentVideoId == null).toList();
     final ctrl = Provider.of<ScrollIndicatorController>(context, listen: false);
 
-    // top enabled if not at 0
-    _currentPage > 0 ? ctrl.topToggleTrue() : ctrl.topToggleFalse();
-    // bottom enabled if not last
-    _currentPage < main.length - 1 ? ctrl.bottomToggleTrue() : ctrl.bottomToggleFalse();
+    final childCount =
+        main.isNotEmpty ? (main[_currentPage].childVideoCount ?? 0) : 0;
 
-    // no horizontal arrows at this level
-    ctrl.leftToggleFalse();
-    ctrl.rightToggleFalse();
-
-    // counts
-    ctrl.setTopCount(_currentPage);
-    ctrl.setBottomCount(main.length - _currentPage - 1);
-    ctrl.setLeftCount(0);
-    ctrl.setRightCount(main[_currentPage].childVideoCount);
+    ctrl.updateIndicators(
+      top: _currentPage > 0,
+      topCount: _currentPage,
+      bottom: _currentPage < main.length - 1,
+      bottomCount: main.length - _currentPage - 1,
+      left: false,
+      leftCount: 0,
+      right: childCount > 0,
+      rightCount: childCount,
+    );
   }
 
   @override
@@ -76,15 +74,23 @@ class _FeedScreenState extends State<FeedScreen> {
             if (feed.isLoading) {
               return const Center(child: CircularProgressIndicator());
             }
-            final main = feed.posts.where((p) => p.parentVideoId == null).toList();
+            final main =
+                feed.posts.where((p) => p.parentVideoId == null).toList();
             if (main.isEmpty) {
               return Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.videocam_off, size: 64, color: Colors.white54),
+                    const Icon(
+                      Icons.videocam_off,
+                      size: 64,
+                      color: Colors.white54,
+                    ),
                     const SizedBox(height: 16),
-                    const Text('No videos available', style: TextStyle(color: Colors.white)),
+                    const Text(
+                      'No videos available',
+                      style: TextStyle(color: Colors.white),
+                    ),
                     ElevatedButton(
                       onPressed: feed.getFeedDatas,
                       child: const Text('Refresh'),
@@ -99,10 +105,16 @@ class _FeedScreenState extends State<FeedScreen> {
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
                   itemCount: main.length,
-                  itemBuilder: (_, i) => VideoThread(
-                    post: main[i],
-                    scrollDirection: Axis.horizontal,
-                  ),
+                  onPageChanged: (_) => _updateMainIndicators(),
+                  itemBuilder: (_, i) {
+                    if(main[i].childVideoCount>0){
+                      _updateMainIndicators();
+                    }
+                    return VideoThread(
+                      post: main[i],
+                      scrollDirection: Axis.horizontal,
+                    );
+                  },
                 ),
                 const Positioned(
                   bottom: 16,
