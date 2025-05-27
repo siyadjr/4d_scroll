@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:motion_media/controller/play_controller.dart';
 import 'package:motion_media/controller/scroll_indicator_controller.dart';
 import 'package:motion_media/model/post_model.dart';
-import 'package:motion_media/view/home/widgets/video_player.dart';
+import 'package:motion_media/view/home/manage_video_player.dart';
+
 import 'package:provider/provider.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -45,7 +46,7 @@ class _VideoThreadState extends State<VideoThread> {
           setState(() {
             _currentPage = newPage;
           });
-          _updateScrollIndicators();
+         
           if (newPage == 0 && widget.onBackScroll != null) {
             // widget.onBackScroll!();
           }
@@ -293,36 +294,3 @@ class Debouncer {
   }
 }
 
-class ManagedVideoPlayer extends StatelessWidget {
-  final String videoUrl;
-  final int postId;
-  final Post? parentPost;
-
-  const ManagedVideoPlayer({
-    super.key,
-    required this.videoUrl,
-    required this.postId,
-    this.parentPost,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<PlayController>(
-      builder: (context, playController, child) {
-        final isActive = playController.activePostId == postId;
-        return VideoPlayerWidget(
-          videoUrl: videoUrl,
-          id: postId,
-          parentPost: parentPost,
-          autoPlay: isActive,
-          onVideoTap: () {
-            Provider.of<PlayController>(
-              context,
-              listen: false,
-            ).setActivePost(postId);
-          },
-        );
-      },
-    );
-  }
-}
