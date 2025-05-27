@@ -166,6 +166,7 @@ class NestedFeedManager extends StatefulWidget {
 class _NestedFeedManagerState extends State<NestedFeedManager> {
   PageController? _horizontalController;
   PageController? _verticalController;
+  bool _hasNavigatedToNested = false;
 
   @override
   void initState() {
@@ -177,6 +178,11 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
       if (!mounted) return;
       final provider = Provider.of<FeedProvider>(context, listen: false);
       provider.getReplies(widget.post, widget.depth);
+      
+      // If we're coming from a deeper level, we might need to adjust the initial position
+      if (widget.depth > 0 && provider.currentDepth > widget.depth) {
+        _hasNavigatedToNested = true;
+      }
     });
   }
 
@@ -239,44 +245,85 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
             return PageView.builder(
               controller: _verticalController,
               scrollDirection: Axis.vertical,
-              physics:
-                  provider.currentDepth > widget.depth
-                      ? const NeverScrollableScrollPhysics()
-                      : const AlwaysScrollableScrollPhysics(),
+              physics: const AlwaysScrollableScrollPhysics(),
               itemCount: 1 + replies.length,
               onPageChanged: (index) {
                 final playController = Provider.of<PlayController>(context, listen: false);
+                log('Vertical page changed to index $index at depth ${widget.depth}');
                 if (index == 0) {
-                  // Going back to parent level
-                  if (widget.depth == 1) {
-                    // If we're at depth 1, go back to depth 1 (stay at reply level)
-                    provider.setCurrentDepth(1);
-                  } else {
-                    // If we're deeper, go back one level
-                    provider.setCurrentDepth(widget.depth - 1);
-                  }
+                  // Going back to parent level - reset to the current post's depth
+                  provider.setCurrentDepth(widget.depth);
                   provider.setCurrentPost(currentPost);
                   playController.setActivePost(currentPost.id);
+                  log('Scrolled up to parent ${currentPost.id} at depth ${widget.depth}');
                 } else {
+                  // Going deeper into nested replies
                   provider.setCurrentDepth(widget.depth + 1);
                   provider.setCurrentPost(replies[index - 1]);
                   playController.setActivePost(replies[index - 1].id);
+                  log('Scrolled down to nested reply ${replies[index - 1].id} at depth ${widget.depth + 1}');
                 }
               },
               itemBuilder: (context, index) {
                 if (index == 0) {
                   // Current reply - this allows going back to parent
-                  return ManagedVideoPlayer(
-                    videoUrl: currentPost.videoLink,
-                    postId: currentPost.id,
-                    parentPost: currentPost,
+                  return Container(
+                    color: Colors.black,
+                    child: Stack(
+                      children: [
+                        ManagedVideoPlayer(
+                          videoUrl: currentPost.videoLink,
+                          postId: currentPost.id,
+                          parentPost: currentPost,
+                        ),
+                        // Add a visual indicator that this is the parent level
+                        Positioned(
+                          top: 50,
+                          left: 20,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Parent (Depth ${widget.depth})',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   );
                 } else {
                   // Nested reply
                   final nestedReply = replies[index - 1];
-                  return NestedFeedManager(
-                    post: nestedReply,
-                    depth: widget.depth + 1,
+                  return Container(
+                    color: Colors.black,
+                    child: Stack(
+                      children: [
+                        NestedFeedManager(
+                          post: nestedReply,
+                          depth: widget.depth + 1,
+                        ),
+                        // Add a visual indicator for nested level
+                        Positioned(
+                          top: 50,
+                          left: 20,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Nested (Depth ${widget.depth + 1})',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   );
                 }
               },
