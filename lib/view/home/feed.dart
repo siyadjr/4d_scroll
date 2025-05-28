@@ -2,8 +2,10 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:motion_media/controller/feed_provider.dart';
 import 'package:motion_media/controller/play_controller.dart';
+import 'package:motion_media/controller/scroll_indicator_controller.dart';
 import 'package:motion_media/model/post_model.dart';
 import 'package:motion_media/view/home/manage_video_player.dart';
+import 'package:motion_media/view/home/scroll_indicator.dart';
 import 'package:provider/provider.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -24,11 +26,35 @@ class _FeedScreenState extends State<FeedScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final feedProvider = Provider.of<FeedProvider>(context, listen: false);
-      final playController = Provider.of<PlayController>(context, listen: false);
+      final playController = Provider.of<PlayController>(
+        context,
+        listen: false,
+      );
+      final scrollProvider = Provider.of<ScrollIndicatorController>(
+        context,
+        listen: false,
+      );
 
       feedProvider.getFeedDatas().then((_) {
         if (feedProvider.posts.isNotEmpty) {
-          playController.setActivePost(feedProvider.posts.first.id);
+          final post = feedProvider.posts.first;
+          playController.setActivePost(post.id);
+          // Initialize scroll indicator for the first video
+          scrollProvider.updateIndicators(
+            top: false, // No videos above the first one
+            topCount: 0, // No videos above
+            bottom:
+                feedProvider.posts.length >
+                1, // Show bottom indicator if more than one video
+            bottomCount:
+                feedProvider.posts.length - 1, // Number of videos below
+            left: false, // Not used in main vertical feed
+            leftCount: 0, // Not used in main vertical feed
+            right:
+                post.childVideoCount >
+                0, // Show right indicator if post has replies
+            rightCount: post.childVideoCount, // Number of replies (if any)
+          );
         }
       });
     });
@@ -40,7 +66,10 @@ class _FeedScreenState extends State<FeedScreen> {
       _currentPage = newPage;
       final feed = Provider.of<FeedProvider>(context, listen: false);
       final post = feed.posts[_currentPage];
-      Provider.of<PlayController>(context, listen: false).setActivePost(post.id);
+      Provider.of<PlayController>(
+        context,
+        listen: false,
+      ).setActivePost(post.id);
     }
   }
 
@@ -54,6 +83,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {});
     return SafeArea(
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -83,11 +113,39 @@ class _FeedScreenState extends State<FeedScreen> {
                   onPageChanged: (index) {
                     log('Changed main feed page to $index');
                     feed.resetToMainFeed();
-                    final post = main[index];
-                    Provider.of<PlayController>(
+                    final scrollProvider =
+                        Provider.of<ScrollIndicatorController>(
+                          context,
+                          listen: false,
+                        );
+                    final playController = Provider.of<PlayController>(
                       context,
                       listen: false,
-                    ).setActivePost(post.id);
+                    );
+
+                    // Update play controller
+                    final post = main[index];
+                    playController.setActivePost(post.id);
+
+                    // Update scroll indicator
+                    scrollProvider.updateIndicators(
+                      top:
+                          index > 0, // Show top indicator if not at first video
+                      topCount: index, // Number of videos above
+                      bottom:
+                          index <
+                          main.length -
+                              1, // Show bottom indicator if not at last video
+                      bottomCount:
+                          main.length - index - 1, // Number of videos below
+                      left: false, // Not used in main vertical feed
+                      leftCount: 0, // Not used in main vertical feed
+                      right:
+                          post.childVideoCount >
+                          0, // Show right indicator if post has replies
+                      rightCount:
+                          post.childVideoCount, // Number of replies (if any)
+                    );
                   },
                   itemBuilder: (_, i) {
                     return NestedFeedManager(post: main[i], depth: 0);
@@ -97,6 +155,7 @@ class _FeedScreenState extends State<FeedScreen> {
             );
           },
         ),
+        floatingActionButton: ScrollIndicator(),
       ),
     );
   }
@@ -177,8 +236,19 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final provider = Provider.of<FeedProvider>(context, listen: false);
+      final scrollProvider = Provider.of<ScrollIndicatorController>(
+        context,
+        listen: false,
+      );
+      // // here if the post have child count greater than 0 that time we have to call this
+      if (widget.post.childVideoCount > 0) {
+        scrollProvider.rightToggleTrue();
+      } else {
+        scrollProvider.rightToggleFalse();
+      }
+
       provider.getReplies(widget.post, widget.depth);
-      
+
       // If we're coming from a deeper level, we might need to adjust the initial position
       if (widget.depth > 0 && provider.currentDepth > widget.depth) {
         _hasNavigatedToNested = true;
@@ -205,12 +275,16 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
           return PageView.builder(
             controller: _horizontalController,
             scrollDirection: Axis.horizontal,
-            physics: provider.currentDepth > 1 
-                ? const NeverScrollableScrollPhysics()
-                : const AlwaysScrollableScrollPhysics(),
+            physics:
+                provider.currentDepth > 1
+                    ? const NeverScrollableScrollPhysics()
+                    : const AlwaysScrollableScrollPhysics(),
             itemCount: 1 + replies.length,
             onPageChanged: (index) {
-              final playController = Provider.of<PlayController>(context, listen: false);
+              final playController = Provider.of<PlayController>(
+                context,
+                listen: false,
+              );
               if (index == 0) {
                 provider.setCurrentDepth(0);
                 provider.setCurrentPost(widget.post);
@@ -248,20 +322,29 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
               physics: const AlwaysScrollableScrollPhysics(),
               itemCount: 1 + replies.length,
               onPageChanged: (index) {
-                final playController = Provider.of<PlayController>(context, listen: false);
-                log('Vertical page changed to index $index at depth ${widget.depth}');
+                final playController = Provider.of<PlayController>(
+                  context,
+                  listen: false,
+                );
+                log(
+                  'Vertical page changed to index $index at depth ${widget.depth}',
+                );
                 if (index == 0) {
                   // Going back to parent level - reset to the current post's depth
                   provider.setCurrentDepth(widget.depth);
                   provider.setCurrentPost(currentPost);
                   playController.setActivePost(currentPost.id);
-                  log('Scrolled up to parent ${currentPost.id} at depth ${widget.depth}');
+                  log(
+                    'Scrolled up to parent ${currentPost.id} at depth ${widget.depth}',
+                  );
                 } else {
                   // Going deeper into nested replies
                   provider.setCurrentDepth(widget.depth + 1);
                   provider.setCurrentPost(replies[index - 1]);
                   playController.setActivePost(replies[index - 1].id);
-                  log('Scrolled down to nested reply ${replies[index - 1].id} at depth ${widget.depth + 1}');
+                  log(
+                    'Scrolled down to nested reply ${replies[index - 1].id} at depth ${widget.depth + 1}',
+                  );
                 }
               },
               itemBuilder: (context, index) {
@@ -276,22 +359,8 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
                           postId: currentPost.id,
                           parentPost: currentPost,
                         ),
+
                         // Add a visual indicator that this is the parent level
-                        Positioned(
-                          top: 50,
-                          left: 20,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.7),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'Parent (Depth ${widget.depth})',
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   );
@@ -306,22 +375,8 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
                           post: nestedReply,
                           depth: widget.depth + 1,
                         ),
+
                         // Add a visual indicator for nested level
-                        Positioned(
-                          top: 50,
-                          left: 20,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.7),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'Nested (Depth ${widget.depth + 1})',
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   );
