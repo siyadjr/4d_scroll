@@ -110,43 +110,33 @@ class _FeedScreenState extends State<FeedScreen> {
                           ? const NeverScrollableScrollPhysics()
                           : const AlwaysScrollableScrollPhysics(),
                   itemCount: main.length,
-                  onPageChanged: (index) {
-                    log('Changed main feed page to $index');
-                    feed.resetToMainFeed();
-                    final scrollProvider =
-                        Provider.of<ScrollIndicatorController>(
-                          context,
-                          listen: false,
-                        );
-                    final playController = Provider.of<PlayController>(
-                      context,
-                      listen: false,
-                    );
+                onPageChanged: (index) {
+  log('Changed main feed page to $index');
+  feed.resetToMainFeed();
+  final scrollProvider =
+      Provider.of<ScrollIndicatorController>(
+        context,
+        listen: false,
+      );
+  final playController = Provider.of<PlayController>(
+    context,
+    listen: false,
+  );
+  final post = main[index];
+  playController.setActivePost(post.id);
 
-                    // Update play controller
-                    final post = main[index];
-                    playController.setActivePost(post.id);
-
-                    // Update scroll indicator
-                    scrollProvider.updateIndicators(
-                      top:
-                          index > 0, // Show top indicator if not at first video
-                      topCount: index, // Number of videos above
-                      bottom:
-                          index <
-                          main.length -
-                              1, // Show bottom indicator if not at last video
-                      bottomCount:
-                          main.length - index - 1, // Number of videos below
-                      left: false, // Not used in main vertical feed
-                      leftCount: 0, // Not used in main vertical feed
-                      right:
-                          post.childVideoCount >
-                          0, // Show right indicator if post has replies
-                      rightCount:
-                          post.childVideoCount, // Number of replies (if any)
-                    );
-                  },
+  // Update scroll indicator for vertical feed
+  scrollProvider.updateIndicators(
+    top: index > 0,
+    bottom: index < main.length - 1,
+    right: post.childVideoCount > 0,
+    left: false,
+    topCount: index,
+    bottomCount: main.length - index - 1,
+    rightCount: post.childVideoCount,
+    leftCount: 0,
+  );
+},
                   itemBuilder: (_, i) {
                     return NestedFeedManager(post: main[i], depth: 0);
                   },
@@ -246,7 +236,7 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
       } else {
         scrollProvider.rightToggleFalse();
       }
-
+     
       provider.getReplies(widget.post, widget.depth);
 
       // If we're coming from a deeper level, we might need to adjust the initial position
@@ -265,6 +255,10 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
 
   @override
   Widget build(BuildContext context) {
+      // final scrollProvider = Provider.of<ScrollIndicatorController>(
+      //       context,
+      //       listen: false,
+      //     );
     return Consumer<FeedProvider>(
       builder: (context, provider, child) {
         final replies =
@@ -272,6 +266,7 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
 
         if (widget.depth == 0) {
           // Main feed level - show horizontal replies
+        
           return PageView.builder(
             controller: _horizontalController,
             scrollDirection: Axis.horizontal,
@@ -280,21 +275,41 @@ class _NestedFeedManagerState extends State<NestedFeedManager> {
                     ? const NeverScrollableScrollPhysics()
                     : const AlwaysScrollableScrollPhysics(),
             itemCount: 1 + replies.length,
-            onPageChanged: (index) {
-              final playController = Provider.of<PlayController>(
-                context,
-                listen: false,
-              );
-              if (index == 0) {
-                provider.setCurrentDepth(0);
-                provider.setCurrentPost(widget.post);
-                playController.setActivePost(widget.post.id);
-              } else {
-                provider.setCurrentDepth(1);
-                provider.setCurrentPost(replies[index - 1]);
-                playController.setActivePost(replies[index - 1].id);
-              }
-            },
+         onPageChanged: (index) {
+  final playController = Provider.of<PlayController>(
+    context,
+    listen: false,
+  );
+  if (index == 0) {
+    provider.setCurrentDepth(0);
+    provider.setCurrentPost(widget.post);
+    playController.setActivePost(widget.post.id);
+  } else {
+    provider.setCurrentDepth(1);
+    provider.setCurrentPost(replies[index - 1]);
+    playController.setActivePost(replies[index - 1].id);
+  }
+
+  final scrollProvider = Provider.of<ScrollIndicatorController>(
+    context,
+    listen: false,
+  );
+
+  final currentPost = (index == 0) ? widget.post : replies[index - 1];
+  final hasNested = currentPost.childVideoCount > 0;
+  final itemCount = 1 + replies.length;
+
+  scrollProvider.updateIndicators(
+    left: index > 0,
+    right: (index < itemCount - 1) || hasNested,
+    top: false,
+    bottom: false,
+    leftCount: index,
+    rightCount: (itemCount - index - 1) + (hasNested ? 1 : 0),
+    topCount: 0,
+    bottomCount: 0,
+  );
+},
             itemBuilder: (context, index) {
               if (index == 0) {
                 // Main post
